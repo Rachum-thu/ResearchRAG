@@ -65,3 +65,21 @@ This project uses uv as the package manager for faster dependency resolution and
 - Other AI/ML related libraries
 
 ### Usage
+
+## Testing RAG Local Retriever
+
+To test the basic RAG functionality with local retrieval:
+
+```bash
+# Run the RAG pipeline with local retriever
+ultrarag run examples/RAG_local_retrieve.yaml
+
+# View the results with web interface
+python ./script/case_study.py --data output/memory_nq_RAG_local_retrieve_<timestamp>.json --host 127.0.0.1 --port 8080 --title "RAG Case Study Viewer"
+```
+
+This will:
+1. Run a complete RAG pipeline using Qwen/Qwen3-Embedding-0.6B for embeddings and GPT-4.1-mini for generation
+2. Process the sample Natural Questions dataset 
+3. Generate results with evaluation metrics (accuracy, F1, ROUGE scores, etc.)
+4. Launch a web interface to interactively explore the results, including retrieved documents and LLM responses

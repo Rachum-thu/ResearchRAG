@@ -115,7 +115,7 @@ async def generate(
         else:
             raise ValueError(f"Unsupported message format: {m}")
 
-    sem = asyncio.Semaphore(16)
+    sem = asyncio.Semaphore(32)
 
     async def call_with_retry(idx: int, prompt: str, retries=3, delay=1):
         msg = [{"role": "user", "content": prompt}]
