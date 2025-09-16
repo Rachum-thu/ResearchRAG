@@ -1,4 +1,4 @@
-# Local RAG pipeline with Qwen embedding and GPT-4.1-mini
+# Local RAG pipeline with local embedding and Online LLM
 
 # MCP Server
 servers:

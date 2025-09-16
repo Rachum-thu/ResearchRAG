@@ -155,6 +155,44 @@ def rougel_score(gt: List[str], pred: str) -> float:
     return max(scores) if scores else 0.0
 
 
+# Jimeng's F1 Score implementation
+def f1_score_jimeng(gt: List[str], pred: str) -> float:
+    def normalize_answer(answer: str) -> str:
+        def remove_articles(text):
+            return re.sub(r"\b(a|an|the)\b", " ", text)
+
+        def white_space_fix(text):
+            return " ".join(text.split())
+
+        def remove_punc(text):
+            exclude = set(string.punctuation)
+            return "".join(ch for ch in text if ch not in exclude)
+
+        def lower(text):
+            return text.lower()
+
+        return white_space_fix(remove_articles(remove_punc(lower(answer))))
+
+    # Calculate F1 for each ground truth and return the max
+    scores = []
+    for gold in gt:
+        gold_tokens = normalize_answer(gold).split()
+        predicted_tokens = normalize_answer(pred).split()
+        common = Counter(predicted_tokens) & Counter(gold_tokens)
+        num_same = sum(common.values())
+
+        if num_same == 0:
+            scores.append(0.0)
+            continue
+
+        precision = 1.0 * num_same / len(predicted_tokens)
+        recall = 1.0 * num_same / len(gold_tokens)
+        f1 = 2 * (precision * recall) / (precision + recall)
+        scores.append(f1)
+
+    return max(scores) if scores else 0.0
+
+
 def compute_metrics(
     gt_list: List[List[str]],
     pred_list: List[str],
@@ -166,6 +204,7 @@ def compute_metrics(
         "stringem": string_em_score,
         "coverem": cover_exact_match_score,
         "f1": f1_score,
+        "f1_jimeng": f1_score_jimeng,
         "rouge-1": rouge1_score,
         "rouge-2": rouge2_score,
         "rouge-l": rougel_score,
