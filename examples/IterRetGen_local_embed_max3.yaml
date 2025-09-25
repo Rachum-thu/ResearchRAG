@@ -1,0 +1,37 @@
+# IterRetGen with Local Embedding and Retrieval (Max 3 iterations)
+
+# MCP Server
+servers:
+  benchmark: servers/benchmark
+  retriever: servers/retriever
+  prompt: servers/prompt
+  generation: servers/generation
+  evaluation: servers/evaluation
+  custom: servers/custom
+
+# MCP Client Pipeline - Local Retrieval with LanceDB
+pipeline:
+- benchmark.get_data
+# 初始化本地检索系统
+- retriever.retriever_init
+- retriever.retriever_embed
+- retriever.retriever_index_lancedb
+# 第一轮检索和生成
+- retriever.retriever_search_lancedb
+- prompt.qa_rag_boxed
+- generation.generate
+- custom.output_extract_from_boxed
+# 迭代检索和生成 (最多3轮)
+- loop:
+    times: 3
+    steps:
+    - custom.iterretgen_nextquery:
+        input:
+          ans_ls: pred_ls
+    - retriever.retriever_search_lancedb:
+        input:
+          query_list: nextq_ls
+    - prompt.qa_rag_boxed
+    - generation.generate
+    - custom.output_extract_from_boxed
+- evaluation.evaluate

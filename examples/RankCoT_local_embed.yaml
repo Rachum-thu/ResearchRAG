@@ -1,0 +1,27 @@
+# RankCoT with Local Embedding and Retrieval
+
+# MCP Server
+servers:
+  benchmark: servers/benchmark
+  retriever: servers/retriever
+  prompt: servers/prompt
+  cot: servers/generation
+  gen: servers/generation
+  evaluation: servers/evaluation
+  custom: servers/custom
+
+# MCP Client Pipeline - Local Retrieval with LanceDB
+pipeline:
+- benchmark.get_data
+- retriever.retriever_init
+- retriever.retriever_embed
+- retriever.retriever_index_lancedb
+- retriever.retriever_search_lancedb
+- prompt.RankCoT_kr
+- cot.generate:
+    output:
+      ans_ls: kr_ls
+- prompt.RankCoT_qa
+- gen.generate
+- custom.output_extract_from_boxed
+- evaluation.evaluate
