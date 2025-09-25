@@ -74,7 +74,7 @@ def elem_match(elem: Dict, pairs: List[Tuple[int, str]]) -> bool:
 
 
 class UltraData:
-    def __init__(self, pipeline_yaml_path: str, server_configs: Dict[str, Dict] = None):
+    def __init__(self, pipeline_yaml_path: str, server_configs: Dict[str, Dict] = None, custom_param_config: Dict = None):
         self.pipeline_yaml_path = pipeline_yaml_path
         cfg = Configuration()
         pipeline = cfg.load_config(pipeline_yaml_path)
@@ -93,12 +93,17 @@ class UltraData:
             name: cfg.load_parameter_config(os.path.join(path, "parameter.yaml"))
             for name, path in server_paths.items()
         }
-        all_local_vals = cfg.load_parameter_config(
-            os.path.join(
-                pipeline_yaml_path.rsplit("/", 1)[0]
-                + f"/parameter/{pipeline_yaml_path.split('/')[-1].replace('.yaml', '')}_parameter.yaml"
+
+        # Use custom parameter config if provided, otherwise use default
+        if custom_param_config:
+            all_local_vals = custom_param_config
+        else:
+            all_local_vals = cfg.load_parameter_config(
+                os.path.join(
+                    pipeline_yaml_path.rsplit("/", 1)[0]
+                    + f"/parameter/{pipeline_yaml_path.split('/')[-1].replace('.yaml', '')}_parameter.yaml"
+                )
             )
-        )
         self.local_vals.update(all_local_vals)
         self.io = {}
         self.global_vars = {}
@@ -557,19 +562,20 @@ class UltraData:
         )
         return data
 
-    def write_memory_output(self, pipeline_name: str, timestamp: str):
-        benchmark_cfg = self.local_vals.get("benchmark", {})
-        if isinstance(benchmark_cfg, dict):
-            if "benchmark" in benchmark_cfg and "name" in benchmark_cfg["benchmark"]:
-                benchmark_name = benchmark_cfg["benchmark"]["name"]
-            else:
-                benchmark_name = ""
+    def write_memory_output(self, pipeline_name: str, timestamp: str, param_file_name: str = None):
+        # Get evaluation save_path to determine output directory
+        evaluation_cfg = self.local_vals.get("evaluation", {})
+        if evaluation_cfg and "save_path" in evaluation_cfg:
+            eval_save_path = evaluation_cfg["save_path"]
+            output_dir = Path(eval_save_path).parent
+        else:
+            # Fallback to default output directory
+            output_dir = Path("output")
 
-        output_dir = Path("output")
         output_dir.mkdir(parents=True, exist_ok=True)
-        file_path = (
-            output_dir / f"memory_{benchmark_name}_{pipeline_name}_{timestamp}.json"
-        )
+
+        # Since directory name already contains the experiment info, just use timestamp
+        file_path = output_dir / f"memory_{timestamp}.json"
 
         with open(file_path, "w", encoding="utf-8") as fp:
             json.dump(self.snapshots, fp, ensure_ascii=False, indent=2, default=str)
@@ -811,7 +817,7 @@ async def build(config_path: str):
     logger.info(f"All server configurations have been saved in {server_save_path}")
 
 
-async def run(config_path: str):
+async def run(config_path: str, custom_param_path: str = None):
     log_server_banner(config_path.split("/")[-1].replace(".yaml", ""))
     logger.info(f"Executing pipeline with configuration {config_path}")
     cfg = Configuration()
@@ -831,9 +837,16 @@ async def run(config_path: str):
         if name in all_server_configs
     }
 
-    param_config_path = os.path.join(
-        root_path, "parameter", f"{cfg_name}_parameter.yaml"
-    )
+    # Use custom parameter file if provided, otherwise use default
+    if custom_param_path:
+        param_config_path = custom_param_path
+        param_file_name = Path(custom_param_path).stem  # Get filename without .yaml extension
+        logger.info(f"Using custom parameter file: {param_config_path}")
+    else:
+        param_config_path = os.path.join(
+            root_path, "parameter", f"{cfg_name}_parameter.yaml"
+        )
+        param_file_name = f"{cfg_name}_parameter"  # Default naming for backward compatibility
     param_cfg = cfg.load_parameter_config(param_config_path)
     for srv_name in server_cfg.keys():
         server_cfg[srv_name]["parameter"] = param_cfg.get(srv_name, {})
@@ -880,7 +893,7 @@ async def run(config_path: str):
 
     logger.info("Initializing servers...")
     client = Client(mcp_cfg)
-    Data: UltraData = UltraData(config_path, server_configs=server_cfg)
+    Data: UltraData = UltraData(config_path, server_configs=server_cfg, custom_param_config=param_cfg)
 
     async def execute_steps(
         steps: List[PipelineStep],
@@ -1015,7 +1028,7 @@ async def run(config_path: str):
         result = await execute_steps(pipeline_cfg)
         logger.info(f"Pipeline execution completed.")
         # save memory snapshots
-        Data.write_memory_output(cfg_name, datetime.now().strftime("%Y%m%d_%H%M%S"))
+        Data.write_memory_output(cfg_name, datetime.now().strftime("%Y%m%d_%H%M%S"), param_file_name)
         return result.data
 
 
@@ -1033,6 +1046,13 @@ def main():
         "run", help="Run the pipeline with the given configuration"
     )
     p_run.add_argument("config")
+
+    p_run.add_argument(
+        "--param",
+        type=str,
+        default=None,
+        help="Path to custom parameter file (overrides default parameter file)",
+    )
 
     p_run.add_argument(
         "--log_level",
@@ -1056,7 +1076,7 @@ def main():
         log_server_banner("Building")
         asyncio.run(build(args.config))
     elif args.cmd == "run":
-        asyncio.run(run(args.config))
+        asyncio.run(run(args.config, getattr(args, 'param', None)))
     else:
         parser.print_help()
         sys.exit(1)

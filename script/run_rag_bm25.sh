@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Batch run script for RAG experiments with BM25 retrieval
+# Using the --param flag to specify custom parameter files
+
+echo "Starting batch RAG experiments with BM25 retrieval (seeds 42, 43, 44)"
+echo "=============================================="
+
+# Define the base pipeline file
+PIPELINE="examples/rag_local_bm25.yaml"
+
+# Define parameter files for BM25
+PARAMS=(
+    "examples/parameter/bm25/hippo_2wiki_bm25_4omini_42.yaml"
+    "examples/parameter/bm25/hippo_2wiki_bm25_4omini_43.yaml"
+    "examples/parameter/bm25/hippo_2wiki_bm25_4omini_44.yaml"
+)
+
+# Run experiments sequentially
+for param_file in "${PARAMS[@]}"; do
+    # Extract seed info from filename
+    seed=$(echo $param_file | grep -oE '[0-9]+\.yaml' | grep -oE '[0-9]+')
+
+    echo ""
+    echo "----------------------------------------"
+    echo "Running BM25 experiment with seed $seed"
+    echo "Parameter file: $param_file"
+    echo "----------------------------------------"
+
+    # Run ultrarag with custom parameter file
+    ultrarag run $PIPELINE --param $param_file
+
+    if [ $? -eq 0 ]; then
+        echo "✓ BM25 seed $seed experiment completed successfully"
+    else
+        echo "✗ BM25 seed $seed experiment failed"
+    fi
+done
+
+echo ""
+echo "=============================================="
+echo "All BM25 experiments completed!"
+echo "Results saved in respective output directories"

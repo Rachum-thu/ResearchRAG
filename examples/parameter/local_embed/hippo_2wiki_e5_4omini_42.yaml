@@ -1,0 +1,51 @@
+benchmark:
+  benchmark:
+    key_map:
+      gt_ls: golden_answers
+      q_ls: question
+    limit: -1
+    name: 2wiki
+    path: data/hipporag_2wikimultihopqa_questions.jsonl
+    seed: 42
+    shuffle: false
+custom: {}
+evaluation:
+  metrics:
+  - acc
+  - f1
+  - f1_jimeng
+  - em
+  - coverem
+  - stringem
+  - rouge-1
+  - rouge-2
+  - rouge-l
+  save_path: output/rag_hippo_2wiki_e5_4omini_seed42/evaluate_results.json
+generation:
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.openai.com/v1
+  model_name: gpt-4o-mini-2024-07-18
+  sampling_params:
+    max_tokens: 2048
+    seed: 42
+prompt:
+  template: prompt/qa_rag_boxed.jinja
+retriever:
+  corpus_path: data/hipporag_2wikimultihopqa_corpus.jsonl
+  cuda_devices: 0,1
+  embedding_path: embedding/hipporag_2wiki_e5_embedding.npy
+  faiss_use_gpu: true
+  filter_expr: null
+  index_path: index/index.index
+  infinity_kwargs:
+    batch_size: 64
+    bettertransformer: false
+    device: cuda
+    pooling_method: auto
+  lancedb_path: lancedb/
+  overwrite: false
+  query_instruction: 'Query: '
+  retriever_path: intfloat/e5-base-v2
+  table_name: hipporag_2wiki_e5
+  top_k: 5
+  use_openai: false

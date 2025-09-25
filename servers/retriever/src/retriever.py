@@ -11,6 +11,14 @@ from tqdm import tqdm
 from flask import Flask, jsonify, request
 from openai import AsyncOpenAI, OpenAIError
 
+# BM25 imports
+try:
+    import bm25s
+    import pickle
+    HAS_BM25 = True
+except ImportError:
+    HAS_BM25 = False
+
 
 from fastmcp.exceptions import NotFoundError, ToolError, ValidationError
 from ultrarag.server import UltraRAG_MCP_Server
@@ -69,6 +77,19 @@ class Retriever:
         mcp_inst.tool(
             self.retriever_tavily_search,
             output="q_ls,top_k->ret_psg",
+        )
+        # BM25 tools
+        mcp_inst.tool(
+            self.retriever_init_bm25,
+            output="corpus_path,bm25_index_path->None",
+        )
+        mcp_inst.tool(
+            self.retriever_index_bm25,
+            output="corpus_path,bm25_index_path,overwrite->None",
+        )
+        mcp_inst.tool(
+            self.retriever_search_bm25,
+            output="q_ls,top_k,bm25_index_path->ret_psg",
         )
 
     def retriever_init(
@@ -683,6 +704,106 @@ class Retriever:
             ret[idx] = psg_ls
 
         return {"ret_psg": ret}
+
+    # BM25 Methods
+    def retriever_init_bm25(
+        self,
+        corpus_path: str,
+        bm25_index_path: str,
+    ):
+        """Initialize BM25 retriever configuration"""
+        if not HAS_BM25:
+            raise ToolError("bm25s is not installed. Please install it with `pip install bm25s`")
+
+        app.logger.info(f"Initializing BM25 with corpus: {corpus_path}")
+        app.logger.info(f"BM25 index path: {bm25_index_path}")
+
+        self.corpus_path = corpus_path
+        self.bm25_index_path = bm25_index_path
+
+        return {}
+
+    def retriever_index_bm25(
+        self,
+        corpus_path: str,
+        bm25_index_path: str,
+        overwrite: bool = False,
+    ):
+        """Create BM25 index from corpus"""
+        if not HAS_BM25:
+            raise ToolError("bm25s is not installed. Please install it with `pip install bm25s`")
+
+        if os.path.exists(bm25_index_path) and not overwrite:
+            app.logger.info(f"BM25 index already exists at {bm25_index_path}")
+            return {}
+
+        app.logger.info(f"Creating BM25 index from {corpus_path}")
+
+        # Load corpus
+        corpus_texts = []
+        with jsonlines.open(corpus_path, "r") as reader:
+            for obj in tqdm(reader, desc="Loading corpus"):
+                text = obj.get("text", "")
+                corpus_texts.append(text)
+
+        app.logger.info(f"Loaded {len(corpus_texts)} documents")
+
+        # Tokenize corpus (simple split, you can improve this)
+        corpus_tokens = [text.split() for text in corpus_texts]
+
+        # Create BM25 index
+        retriever = bm25s.BM25()
+        retriever.index(corpus_tokens)
+
+        # Save index and original texts
+        os.makedirs(os.path.dirname(bm25_index_path), exist_ok=True)
+        with open(bm25_index_path, 'wb') as f:
+            pickle.dump({
+                'retriever': retriever,
+                'corpus_texts': corpus_texts
+            }, f)
+
+        app.logger.info(f"BM25 index saved to {bm25_index_path}")
+        return {}
+
+    def retriever_search_bm25(
+        self,
+        q_ls: List[str],
+        top_k: int,
+        bm25_index_path: str,
+    ):
+        """Search using BM25 index"""
+        if not HAS_BM25:
+            raise ToolError("bm25s is not installed. Please install it with `pip install bm25s`")
+
+        if not os.path.exists(bm25_index_path):
+            raise ToolError(f"BM25 index not found at {bm25_index_path}")
+
+        # Load index
+        with open(bm25_index_path, 'rb') as f:
+            index_data = pickle.load(f)
+            retriever = index_data['retriever']
+            corpus_texts = index_data['corpus_texts']
+
+        app.logger.info(f"Searching {len(q_ls)} queries with BM25, top_k={top_k}")
+
+        ret_psg = []
+        for query in tqdm(q_ls, desc="BM25 Searching"):
+            # Tokenize query
+            query_tokens = query.split()
+
+            # Search
+            results, scores = retriever.retrieve(query_tokens, k=top_k)
+
+            # Get top documents
+            retrieved_docs = []
+            for doc_idx in results[0]:  # results is a list of lists
+                if doc_idx < len(corpus_texts):
+                    retrieved_docs.append(corpus_texts[doc_idx])
+
+            ret_psg.append(retrieved_docs)
+
+        return {"ret_psg": ret_psg}
 
 
 if __name__ == "__main__":
